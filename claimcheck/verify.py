@@ -39,12 +39,19 @@ class Result:
     findings: list[Finding] = field(default_factory=list)
     claims_checked: int = 0
     claims_skipped: int = 0
+    explanations: list[str] = field(default_factory=list)
 
 
 class Verifier:
-    def __init__(self, root: str, symbol_severity: str = "warn"):
+    def __init__(self, root: str, symbol_severity: str = "warn",
+                 fence_severity: str = "warn",
+                 severity_overrides: dict[str, str] | None = None,
+                 explain: bool = False):
         self.root = os.path.abspath(root)
         self.symbol_severity = symbol_severity  # "off" | "warn" | "error"
+        self.fence_severity = fence_severity
+        self.severity_overrides = severity_overrides or {}
+        self.explain = explain
         self.git = gitinfo.is_git_repo(self.root)
         self._heading_cache: dict[str, set[str]] = {}
         self._basename_index: dict[str, list[str]] | None = None
@@ -56,14 +63,22 @@ class Verifier:
         full = os.path.join(self.root, rel)
         return rel if os.path.exists(full) else None
 
-    def _resolve(self, claim: Claim) -> str | None:
-        for cand in resolve_candidates(claim.value, claim.doc):
+    def _resolve(self, claim: Claim) -> tuple[str | None, str]:
+        """Returns (resolved repo-relative path | None, how-it-resolved)."""
+        cands = resolve_candidates(claim.value, claim.doc)
+        for cand, how in zip(cands, ("repo-root", "doc-relative")):
             if self._exists(cand):
-                return cand
+                return cand, how
         # Docs cite files by bare name (`AgentManager.java`) or partial path
         # (`agents/screener.yml`, `.../tripwire/TripwireExecutor.java`).
         # Fall back to "exists anywhere in the tree" by suffix match.
-        return self._resolve_by_suffix(claim.value)
+        hit = self._resolve_by_suffix(claim.value)
+        return (hit, "suffix-match") if hit else (None, "missing")
+
+    def _explain(self, res: Result, claim: Claim, outcome: str) -> None:
+        if self.explain:
+            res.explanations.append(
+                f"{claim.doc}:{claim.line}  {claim.type.value}  {claim.value}  →  {outcome}")
 
     def _resolve_by_suffix(self, value: str) -> str | None:
         if self._basename_index is None:
@@ -150,28 +165,40 @@ class Verifier:
             for claim in claims:
                 if claim.type in (ClaimType.PATH, ClaimType.LINK):
                     res.claims_checked += 1
-                    resolved = self._resolve(claim)
+                    resolved, how = self._resolve(claim)
                     if resolved:
+                        self._explain(res, claim, f"ok: {resolved} ({how})")
                         cited_paths.append(resolved)
                     elif claim.type == ClaimType.PATH and not _has_known_ext(claim.value):
                         # `key/value`, `supportsCount/contradictsCount`, bare dir
                         # names — too ambiguous to report as broken when missing.
                         res.claims_checked -= 1
                         res.claims_skipped += 1
+                        self._explain(res, claim, "skipped: ambiguous (no known extension)")
                     else:
-                        code = "path-missing" if claim.type == ClaimType.PATH else "link-broken"
+                        self._explain(res, claim, "MISSING")
+                        if claim.extra.get("fence"):
+                            severity, code = self.fence_severity, "command-path-missing"
+                        elif claim.type == ClaimType.PATH:
+                            severity, code = "error", "path-missing"
+                        else:
+                            severity, code = "error", "link-broken"
                         res.findings.append(Finding(
-                            doc_path, claim.line, "error", code,
-                            f"`{claim.value}` does not exist (checked repo root and doc dir)",
+                            doc_path, claim.line, severity, code,
+                            f"`{claim.value}` does not exist (checked repo root, "
+                            f"doc dir, and tree-wide suffix match)",
                         ))
 
                 elif claim.type == ClaimType.LINE_REF:
                     res.claims_checked += 1
-                    resolved = self._resolve(claim)
+                    resolved, how = self._resolve(claim)
+                    self._explain(res, claim,
+                                  f"ok: {resolved} ({how})" if resolved else "MISSING")
                     if not resolved:
                         res.findings.append(Finding(
                             doc_path, claim.line, "error", "path-missing",
-                            f"`{claim.value}` does not exist (checked repo root and doc dir)",
+                            f"`{claim.value}` does not exist (checked repo root, "
+                            f"doc dir, and tree-wide suffix match)",
                         ))
                         continue
                     cited_paths.append(resolved)
@@ -249,5 +276,15 @@ class Verifier:
                         f"symbol `{claim.value}` not found anywhere in the repo",
                     ))
 
+        if self.severity_overrides:
+            remapped = []
+            for f in res.findings:
+                sev = self.severity_overrides.get(f.code, f.severity)
+                if sev == "off":
+                    continue
+                remapped.append(Finding(f.doc, f.line, sev, f.code, f.message))
+            res.findings = remapped
+
         res.findings.sort(key=lambda f: (f.doc, f.line, f.code))
+        res.explanations.sort()
         return res

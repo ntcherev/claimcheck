@@ -2,6 +2,8 @@
 
 Claim types:
   PATH      inline code that looks like a repo path            `api/service.py`
+            (also: slash-containing tokens inside bash-ish fenced blocks,
+            marked extra["fence"]=True and reported as command-path-missing)
   LINE_REF  a path with a line (or range) suffix               `api/service.py:42`
   LINK      relative markdown link target                      [x](../docs/kb/foo.md)
   ANCHOR    heading anchor in a relative link or same doc      [x](foo.md#setup)
@@ -98,7 +100,34 @@ def symbol_search_term(token: str) -> str:
     return term
 
 
-def extract(doc: Document, symbols_enabled: bool = True) -> list[Claim]:
+# Fence info strings whose content is treated as shell commands. Output-ish
+# fences (```text, ```python, no info) are never scanned — they hold examples.
+_COMMAND_FENCE_INFOS = {"bash", "sh", "shell", "zsh", "fish", "console", "terminal"}
+_TOKEN_STRIP = "\"'`;,|&()"
+
+
+def _fence_path_claims(doc: Document):
+    """Slash-containing path tokens inside command fences: `scripts/dev.sh`
+    in a ```bash block is a claim that the script exists."""
+    for fence in doc.fences:
+        info = fence.info.split()[0].lower() if fence.info else ""
+        if info not in _COMMAND_FENCE_INFOS:
+            continue
+        for offset, raw in enumerate(fence.lines):
+            line = raw.strip()
+            if not line or line.startswith("#"):
+                continue
+            line = line.removeprefix("$ ").removeprefix("% ")
+            for tok in line.split():
+                tok = tok.strip(_TOKEN_STRIP).removeprefix("./")
+                if "/" not in tok or tok.startswith("/") or not looks_like_path(tok):
+                    continue
+                yield Claim(ClaimType.PATH, tok.rstrip("/"), doc.path,
+                            fence.start_line + 1 + offset, extra={"fence": True})
+
+
+def extract(doc: Document, symbols_enabled: bool = True,
+            fences_enabled: bool = True) -> list[Claim]:
     claims: list[Claim] = []
 
     for code in doc.inline_code:
@@ -143,6 +172,9 @@ def extract(doc: Document, symbols_enabled: bool = True) -> list[Claim]:
         if anchor:
             claims.append(Claim(ClaimType.ANCHOR, anchor, doc.path, link.line,
                                 extra={"in_target": path_part or doc.path}))
+
+    if fences_enabled:
+        claims.extend(_fence_path_claims(doc))
 
     for lineno, line in doc.prose_lines:
         for m in _COMMIT_RE.finditer(line):

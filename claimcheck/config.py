@@ -4,6 +4,10 @@
     exclude = ["docs/archive/**"]        # doc globs not scanned
     ignore = ["legacy/*", "*.png"]       # claim targets never reported
     symbols = "warn"                     # off | warn | error
+    fences = "warn"                      # off | warn | error — command-fence path claims
+
+    [claimcheck.severity]                # per-finding-code overrides
+    anchor-missing = "error"             # off | warn | error
 """
 
 from __future__ import annotations
@@ -16,12 +20,17 @@ from dataclasses import dataclass, field
 CONFIG_FILENAME = ".claimcheck.toml"
 
 
+_LEVELS = ("off", "warn", "error")
+
+
 @dataclass
 class Config:
     root: str = "."
     exclude: list[str] = field(default_factory=list)
     ignore: list[str] = field(default_factory=list)
     symbols: str = "warn"
+    fences: str = "warn"
+    severity: dict[str, str] = field(default_factory=dict)
 
     def is_doc_excluded(self, rel_path: str) -> bool:
         return any(fnmatch.fnmatch(rel_path, pat) for pat in self.exclude)
@@ -53,8 +62,15 @@ def load(root: str) -> Config:
     section = data.get("claimcheck", data)
     cfg.exclude = list(section.get("exclude", []))
     cfg.ignore = list(section.get("ignore", []))
-    symbols = section.get("symbols", "warn")
-    if symbols not in ("off", "warn", "error"):
-        raise ValueError(f"{CONFIG_FILENAME}: symbols must be off|warn|error, got {symbols!r}")
-    cfg.symbols = symbols
+    for key in ("symbols", "fences"):
+        level = section.get(key, "warn")
+        if level not in _LEVELS:
+            raise ValueError(f"{CONFIG_FILENAME}: {key} must be off|warn|error, got {level!r}")
+        setattr(cfg, key, level)
+    severity = section.get("severity", {})
+    for code, level in severity.items():
+        if level not in _LEVELS:
+            raise ValueError(
+                f"{CONFIG_FILENAME}: severity.{code} must be off|warn|error, got {level!r}")
+    cfg.severity = dict(severity)
     return cfg

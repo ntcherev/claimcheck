@@ -7,19 +7,18 @@ verified-date: 2026-07-11
 Ordered by conviction, not date. Each item should land with tests and an ADR
 if it changes behavior.
 
-## v0.2 — earn daily-driver status
+## Shipped · v0.2 (2026-07-11) — daily-driver ergonomics
 
-- **`check --since <ref>`** — only check docs touched in a git range; makes
-  pre-commit/PR usage instant on big repos.
-- **Command claims** — verify fenced ```bash blocks' script paths and
-  make/npm/just targets exist (extraction is already fence-aware; this is the
-  reason fences are collected).
-- **Suffix-resolution report mode** — `--explain` prints where each claim
-  resolved, so users can see why something passed.
-- **Per-code severity config** — `[claimcheck.severity] anchor-missing = "error"`.
-- **Stamp ergonomics** — `stamp --all-stale` restamps every doc whose only
-  finding is `stamp-stale` after a human pass; print a re-verify checklist
-  (the changed cited files) per doc.
+`check --since <ref>` (scoped fast runs incl. uncommitted/untracked docs,
+ADR-012) · command claims in shell fences (`command-path-missing`, ADR-011) ·
+`check --explain` resolution tracing · `[claimcheck.severity]` per-code
+overrides · `stamp --all-stale` with re-verify checklist.
+
+## v0.2.x — leftovers
+
+- **Make/npm/just target claims** — `make deploy` in a fence verified against
+  Makefile/package.json targets. Deferred from v0.2 (ADR-011): separate claim
+  type, needs manifest parsing.
 
 ## v0.3 — ecosystem fit
 

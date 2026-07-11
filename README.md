@@ -31,6 +31,7 @@ keys. Exit codes are CI-friendly: `0` clean, `1` drift found, `2` usage error.
 | Relative link | `[design](../docs/design.md)` | `link-broken` |
 | Anchor | `[setup](README.md#install)` | `anchor-missing` |
 | Symbol | `` `Planner.execute()` ``, `` `Foo#bar` `` | `symbol-missing` |
+| Command path | `./scripts/dev.sh` inside a ```` ```bash ```` fence | `command-path-missing` |
 | Commit citation | `verified against commit abc1234` | `commit-missing` | <!-- claimcheck:ignore -->
 
 | Freshness stamp | `verified-commit:` front matter | `stamp-stale` |
@@ -77,11 +78,14 @@ Or install the `claimcheck` command with `pip install .` from this repo.
 
 ```text
 claimcheck check [paths...]          # verify docs (default: whole repo)
+claimcheck check --since <ref>       # only docs changed since a git ref (fast pre-commit runs)
 claimcheck check --strict            # warnings also fail CI
 claimcheck check --format json       # machine-readable findings
+claimcheck check --explain           # show where each path claim resolved
 claimcheck check --no-symbols        # skip symbol claims
 claimcheck claims [paths...]         # debug: list every claim extracted
 claimcheck stamp <docs...>           # write verified-commit front matter
+claimcheck stamp --all-stale         # restamp stale-only docs, print re-verify checklist
 ```
 
 ## Configuration
@@ -93,6 +97,10 @@ Optional `.claimcheck.toml` at the repo root:
 exclude = ["docs/archive/**"]   # docs not scanned at all
 ignore = ["legacy/*"]           # claim targets never reported
 symbols = "warn"                # off | warn | error
+fences = "warn"                 # off | warn | error — path claims in ```bash fences
+
+[claimcheck.severity]           # per-finding-code overrides
+anchor-missing = "error"        # off | warn | error
 ```
 
 Suppress a single line with an HTML comment: `` `old/path.py` `` `<!-- claimcheck:ignore -->`.

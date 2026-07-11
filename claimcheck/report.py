@@ -34,7 +34,7 @@ def render_text(res: Result, docs_scanned: int) -> str:
 def render_json(res: Result, docs_scanned: int) -> str:
     errors = sum(1 for f in res.findings if f.severity == "error")
     warns = sum(1 for f in res.findings if f.severity == "warn")
-    return json.dumps({
+    payload = {
         "findings": [asdict(f) for f in res.findings],
         "summary": {
             "errors": errors,
@@ -43,4 +43,7 @@ def render_json(res: Result, docs_scanned: int) -> str:
             "claims_checked": res.claims_checked,
             "claims_skipped": res.claims_skipped,
         },
-    }, indent=2)
+    }
+    if res.explanations:
+        payload["explanations"] = res.explanations
+    return json.dumps(payload, indent=2)

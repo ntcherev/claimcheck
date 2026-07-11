@@ -112,3 +112,29 @@ first two commits; history was rebuilt before any push.
 **Decision.** Public-repo hygiene rule (also in AGENTS.md): owner-private
 identifiers never enter files or history; `.claude/` is gitignored; validation
 corpus specifics live in the assistant's project memory, not the repo.
+
+## ADR-011 · 2026-07-11 · Command claims: bash-ish fences, slash-required, distinct code
+
+**Context.** v0.2 adds verification of paths inside fenced code blocks — the
+reason fences were collected since v0.1. Fences are example-heavy, so the
+false-positive risk is the highest of any claim type.
+**Decision.** Only fences whose info string is shell-like (`bash`, `sh`,
+`shell`, `zsh`, `fish`, `console`, `terminal`) are scanned; ```text/```python
+and bare fences never are (that's where sample *output* lives). Tokens must
+contain a `/`, pass the normal path heuristics, and not be absolute; comment
+lines are skipped. Findings get their own code `command-path-missing` at
+severity `warn` by default (config `fences = off|warn|error`), so they never
+break CI unless opted in.
+**Consequences.** `make`/`npm run` target verification is deferred — it needs
+Makefile/package.json parsing and is a separate claim type, not a path claim.
+
+## ADR-012 · 2026-07-11 · --since includes uncommitted work; empty selection passes
+
+**Decision.** `check --since <ref>` scopes to docs that differ from `<ref>`
+in *any* way: committed changes, working-tree edits, and untracked files
+(`git diff --name-only <ref>` ∪ `git ls-files --others`). An empty selection
+prints "nothing to check" and exits 0 — a scoped check with no scope is a
+pass, not an error; a bad ref exits 2.
+**Consequences.** Safe as a pre-commit hook: new docs are caught before their
+first commit, and unchanged-doc drift (code moved under a stale doc) is
+deliberately out of scope for `--since` — run the full `check` in CI for that.

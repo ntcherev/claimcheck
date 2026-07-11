@@ -9,6 +9,7 @@ ignore = [
     "index.ts",
     "src/planner.py",
     "src/loop.py",
+    "scripts/dev.sh",
     "old/path.py",
     "legacy/*",
     "docs/archive/**",

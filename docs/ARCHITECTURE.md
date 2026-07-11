@@ -36,8 +36,10 @@ Every stage is a separate module with a plain-data interface between stages:
   front-matter commits.
 - `verify.Finding` — `(doc, line, severity, code, message)`; codes are the
   stable public vocabulary (`path-missing`, `line-out-of-range`,
-  `link-broken`, `anchor-missing`, `symbol-missing`, `commit-missing`,
-  `stamp-stale`).
+  `link-broken`, `anchor-missing`, `symbol-missing`, `command-path-missing`,
+  `commit-missing`, `stamp-stale`). Severities are remappable per code via
+  `[claimcheck.severity]`; `check --explain` records how each path claim
+  resolved (repo-root / doc-relative / suffix-match).
 
 ## Resolution strategy (the heart of precision)
 
@@ -51,7 +53,9 @@ Reporting rules that keep errors trustworthy:
   extension (`claims.KNOWN_EXTS`); extension-less tokens (`key/value`,
   `supportsCount/contradictsCount`) are counted as skipped.
 - ALL_CAPS slash lists (`SIGNAL_PENDING/ROUTED`) are rejected at extraction.
-- Fenced code blocks are never scanned for claims (they hold examples).
+- Fenced blocks are scanned only when shell-like (```bash et al., ADR-011):
+  slash-containing tokens become command-path claims (`command-path-missing`,
+  warn by default). Output/example fences (```text, ```python, bare) never are.
 - SYMBOL search excludes markdown from its corpus — a doc must not vouch for
   its own claim — and is word-boundary based over text files ≤ 1 MB.
 
@@ -66,7 +70,7 @@ property.
 
 ## Testing
 
-`python3 -m unittest discover -s tests` — 54 tests: unit (markdown parsing,
+`python3 -m unittest discover -s tests` — 68 tests: unit (markdown parsing,
 claim heuristics) and integration (real temp git repos exercising the full
 check/stamp/stale cycle through `cli.main`). No test doubles for git; the
 real binary runs against throwaway repos.

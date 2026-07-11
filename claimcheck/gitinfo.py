@@ -45,6 +45,19 @@ def commits_since(root: str, sha: str) -> int | None:
         return None
 
 
+def files_changed_from(root: str, ref: str) -> set[str] | None:
+    """All files that differ from `ref`: committed changes, working-tree
+    modifications, and untracked files. None if the ref is invalid."""
+    r = _git(root, "diff", "--name-only", ref, "--")
+    if r.returncode != 0:
+        return None
+    files = {ln for ln in r.stdout.splitlines() if ln.strip()}
+    r2 = _git(root, "ls-files", "--others", "--exclude-standard")
+    if r2.returncode == 0:
+        files.update(ln for ln in r2.stdout.splitlines() if ln.strip())
+    return files
+
+
 def changed_files_since(root: str, sha: str, paths: list[str]) -> list[str]:
     """Repo-relative paths (from `paths`) touched between sha and HEAD."""
     if not paths:
