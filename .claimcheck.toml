@@ -1,0 +1,15 @@
+# claimcheck's own config — the repo dogfoods itself.
+# `ignore` holds the illustrative example paths our docs use when explaining
+# the tool; they are not claims about this repository.
+[claimcheck]
+symbols = "warn"
+ignore = [
+    "*.java",            # no Java here; every .java mention is an example
+    "SKILL.md",
+    "index.ts",
+    "src/planner.py",
+    "src/loop.py",
+    "old/path.py",
+    "legacy/*",
+    "docs/archive/**",
+]
