@@ -1,5 +1,5 @@
 ---
-verified-commit: bde8afa877dd93a5f99e49264b19d84dacddeaad
+verified-commit: cb17dad35405bd70e0a9307c749ee4b1dc8eb2f0
 verified-date: 2026-07-11
 ---
 # Architecture
