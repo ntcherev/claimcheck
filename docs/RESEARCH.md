@@ -1,5 +1,5 @@
 ---
-verified-commit: 3566947c92967e1a56f3415ccc82bcf9ea6ab9e8
+verified-commit: bde8afa877dd93a5f99e49264b19d84dacddeaad
 verified-date: 2026-07-11
 ---
 # Market / gap research (2026-07-11)
