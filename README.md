@@ -1,5 +1,7 @@
 # claimcheck
 
+[![ci](https://github.com/ntcherev/claimcheck/actions/workflows/ci.yml/badge.svg)](https://github.com/ntcherev/claimcheck/actions/workflows/ci.yml)
+
 **A linter that keeps agent-facing docs true.**
 
 Coding agents read `CLAUDE.md`, `AGENTS.md`, and `docs/kb/*.md` and act on them
@@ -102,6 +104,30 @@ claimcheck check --no-symbols        # skip symbol claims
 claimcheck claims [paths...]         # debug: list every claim extracted
 claimcheck stamp <docs...>           # write verified-commit front matter
 claimcheck stamp --all-stale         # restamp stale-only docs, print re-verify checklist
+```
+
+## CI and pre-commit
+
+As a GitHub Action (checkout with history so freshness stamps can be verified):
+
+```yaml
+- uses: actions/checkout@v4
+  with:
+    fetch-depth: 0
+- uses: ntcherev/claimcheck@v0.3.1
+  with:
+    paths: docs        # optional, default: whole repo
+    strict: "true"     # optional, fail on warnings too
+```
+
+As a pre-commit hook (checks only docs you touched — instant on non-doc commits):
+
+```yaml
+repos:
+  - repo: https://github.com/ntcherev/claimcheck
+    rev: v0.3.1
+    hooks:
+      - id: claimcheck
 ```
 
 ## Configuration

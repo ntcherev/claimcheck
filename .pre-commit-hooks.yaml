@@ -1,0 +1,18 @@
+# Usage in a consuming repo's .pre-commit-config.yaml:
+#
+#   repos:
+#     - repo: https://github.com/ntcherev/claimcheck
+#       rev: v0.3.1
+#       hooks:
+#         - id: claimcheck
+#
+# `check --since HEAD` scopes to docs that differ from HEAD in any way,
+# including uncommitted and untracked docs (ADR-012); an empty selection
+# passes, so non-doc commits are instant.
+- id: claimcheck
+  name: claimcheck
+  description: Verify that changed markdown docs still tell the truth about the codebase
+  entry: claimcheck check --since HEAD
+  language: python
+  files: \.(md|mdx|markdown)$
+  pass_filenames: false

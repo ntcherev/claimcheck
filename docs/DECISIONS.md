@@ -206,3 +206,22 @@ whose written form escapes the root is skipped and counted (`--explain` says
 **Consequences.** Corpus: 29 → 22 errors, 12 more skips; every remaining
 error spot-checked as genuine drift. A truly deleted in-repo file cited via
 `../` is no longer reported — precision over recall, as ever.
+
+## ADR-017 · 2026-07-12 · CI wrappers ship without PyPI
+
+**Context.** Roadmap sequenced GitHub Action and pre-commit hook after a
+PyPI release, but neither actually needs one: a composite action can run the
+module straight from the action checkout (`PYTHONPATH=$github.action_path`),
+and pre-commit installs hooks from a git URL + tag via the existing
+`pyproject.toml` console script.
+
+**Decision.** Ship `action.yml` (inputs: `paths`, `strict`) and
+`.pre-commit-hooks.yaml` (`check --since HEAD`, so non-doc commits are
+instant — ADR-012) referencing git tags. `ci.yml` dogfoods both: unit tests
+on 3.11/3.13, `check --strict` on this repo, and the composite action run
+against itself. CI checkouts need `fetch-depth: 0` — stamp verification
+reads git history.
+
+**Consequences.** Adoptable from a tag today; PyPI is now only the
+`pip install claimcheck` convenience, not a blocker. Wrappers are config,
+not behavior — no unit tests; the `action` CI job is their test.

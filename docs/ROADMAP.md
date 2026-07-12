@@ -23,12 +23,17 @@ ADR-012) · command claims in shell fences (`command-path-missing`, ADR-011) ·
 `check --explain` resolution tracing · `[claimcheck.severity]` per-code
 overrides · `stamp --all-stale` with re-verify checklist.
 
+## Shipped · v0.3.1 (2026-07-12) — CI wrappers, no PyPI needed
+
+GitHub Action (`action.yml`, composite, runs from the action checkout) ·
+pre-commit hook (`.pre-commit-hooks.yaml`, `--since HEAD` so non-doc commits
+are instant) · `ci.yml` dogfooding tests + strict self-check + the action
+itself (ADR-017).
+
 ## v0.4 — ecosystem fit
 
 - **Publish to PyPI** — name checked free as of 2026-07-11; needs the owner's
-  credentials. Prerequisite for the wrappers below.
-- **GitHub Action + pre-commit hook** — thin wrappers; JSON output already
-  exists.
+  credentials. Now purely the `pip install claimcheck` convenience (ADR-017).
 - **SARIF output** — GitHub code-scanning annotations on PRs.
 - **Make/npm/just target claims** — `make deploy` in a fence verified against
   Makefile/package.json targets. Deferred from v0.2 (ADR-011): separate claim
