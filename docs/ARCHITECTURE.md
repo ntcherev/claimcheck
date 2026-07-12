@@ -46,7 +46,7 @@ Every stage is a separate module with a plain-data interface between stages:
 A path claim is resolved in order: repo-root relative → doc-dir relative →
 suffix match against a lazily-built basename index of the whole tree (this is
 what makes bare `AgentManager.java` and abbreviated `.../pkg/File.java`
-citations work; leading `../` segments are stripped for the suffix pass).
+citations work; cites escaping the root never reach the suffix pass, ADR-016).
 Reporting rules that keep errors trustworthy:
 
 - Missing PATH claims are only reported when the basename has a known file
