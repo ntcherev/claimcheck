@@ -23,6 +23,12 @@ ADR-012) · command claims in shell fences (`command-path-missing`, ADR-011) ·
 `check --explain` resolution tracing · `[claimcheck.severity]` per-code
 overrides · `stamp --all-stale` with re-verify checklist.
 
+## Shipped · v0.3.2 (2026-07-12) — determinism across checkouts
+
+Found by our own first CI run failing while local passed. Git-visible files
+are the truth domain: gitignored paths are never evidence and never reported
+(ADR-018) · stamp staleness sees uncommitted edits to cited files (ADR-019).
+
 ## Shipped · v0.3.1 (2026-07-12) — CI wrappers, no PyPI needed
 
 GitHub Action (`action.yml`, composite, runs from the action checkout) ·

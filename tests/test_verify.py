@@ -69,7 +69,8 @@ class TestPathClaims(RepoCase):
         write(self.root, "doc.md",
               "It's a `key/value` store with `supportsCount/latestSupportDate`, "
               "see `docs/kb`.\n")
-        os.makedirs(os.path.join(self.root, "docs/kb"))
+        # non-empty: git sees dirs only through their files (ADR-018)
+        write(self.root, "docs/kb/pipeline.md", "# kb\n")
         res = self.check_doc("doc.md")
         self.assertEqual(res.findings, [])
         self.assertEqual(res.claims_skipped, 2)  # docs/kb exists → checked

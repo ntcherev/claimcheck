@@ -66,6 +66,12 @@ Reporting rules that keep errors trustworthy:
 - `.claude/worktrees` (stale agent checkouts) is excluded from every walk —
   discovery, basename index, symbol corpus (ADR-014). `.claude` itself is
   walked so `.claude/skills/**/SKILL.md` docs are checked like any other.
+- In a git repo, evidence is what git sees AND disk has: tracked +
+  untracked-unignored (ADR-018). Gitignored paths are invisible both ways —
+  never evidence, never reported missing. Doc discovery follows suit;
+  explicitly named files override. Outside git: plain filesystem walks.
+- Stamp staleness diffs the stamp against the working tree, not just
+  `..HEAD` — uncommitted edits to cited files already count (ADR-019).
 
 ## Stamp staleness
 
@@ -78,7 +84,7 @@ property.
 
 ## Testing
 
-`python3 -m unittest discover -s tests` — 91 tests: unit (markdown parsing,
+`python3 -m unittest discover -s tests` — 99 tests: unit (markdown parsing,
 claim heuristics) and integration (real temp git repos exercising the full
 check/stamp/stale cycle through `cli.main`). No test doubles for git; the
 real binary runs against throwaway repos.

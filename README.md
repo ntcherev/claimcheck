@@ -46,7 +46,7 @@ extension-less tokens (`key/value`) are skipped, not reported — errors are
 meant to be trustworthy. Symbol checks deliberately ignore markdown files as
 evidence: a doc mentioning a symbol must not vouch for its own claim.
 
-Three deliberate exceptions keep agent-facing checks honest:
+Four deliberate exceptions keep verdicts honest and identical across checkouts:
 
 - **Memory imports get runtime semantics.** A `@path` import in `CLAUDE.md`,
   `CLAUDE.local.md`, or `AGENTS.md` is checked exactly where the agent
@@ -60,6 +60,10 @@ Three deliberate exceptions keep agent-facing checks honest:
 - **Stale agent worktrees are never evidence.** Files under
   `.claude/worktrees` (leftover agent checkouts) don't satisfy claims — a
   deleted file "existing" in a stale copy would mask real drift.
+- **Gitignored paths are invisible, both ways.** A `.env` that exists only
+  in your checkout is not evidence (CI's clone won't have it), and citing
+  one is never reported as drift — the verdict is the same in your working
+  copy and a fresh clone.
 
 ## The stamp workflow
 
@@ -114,7 +118,7 @@ As a GitHub Action (checkout with history so freshness stamps can be verified):
 - uses: actions/checkout@v4
   with:
     fetch-depth: 0
-- uses: ntcherev/claimcheck@v0.3.1
+- uses: ntcherev/claimcheck@v0.3.2
   with:
     paths: docs        # optional, default: whole repo
     strict: "true"     # optional, fail on warnings too
@@ -125,7 +129,7 @@ As a pre-commit hook (checks only docs you touched — instant on non-doc commit
 ```yaml
 repos:
   - repo: https://github.com/ntcherev/claimcheck
-    rev: v0.3.1
+    rev: v0.3.2
     hooks:
       - id: claimcheck
 ```

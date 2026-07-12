@@ -38,6 +38,13 @@ def prune_dirnames(rel_dir: str, dirnames: list[str]) -> list[str]:
     return keep
 
 
+def is_excluded_path(rel: str) -> bool:
+    """Path-level equivalent of prune_dirnames, for git-listed paths."""
+    if any(seg in EXCLUDE_DIRS for seg in rel.split("/")[:-1]):
+        return True
+    return any(rel == ex or rel.startswith(ex + "/") for ex in EXCLUDE_REL_DIRS)
+
+
 def _has_known_ext(value: str) -> bool:
     base = value.rstrip("/").rpartition("/")[2]
     _, dot, ext = base.rpartition(".")
@@ -74,13 +81,62 @@ class Verifier:
         self.git = gitinfo.is_git_repo(self.root)
         self._heading_cache: dict[str, set[str]] = {}
         self._basename_index: dict[str, list[str]] | None = None
+        self._evidence: tuple[set[str], set[str]] | None | bool = False  # unbuilt
+        self._ignored_cache: dict[str, bool] = {}
 
     # -- helpers -------------------------------------------------------
 
+    def _evidence_sets(self) -> tuple[set[str], set[str]] | None:
+        """(files, dirs) that git sees — tracked + untracked-unignored — or
+        None outside a git repo. The repo's truth domain (ADR-018): a
+        gitignored file existing only in someone's checkout is not evidence."""
+        if self._evidence is False:
+            listed = gitinfo.ls_files(self.root) if self.git else None
+            if listed is None:
+                self._evidence = None
+            else:
+                files = set(listed)
+                dirs: set[str] = set()
+                for f in files:
+                    d = posixpath.dirname(f)
+                    while d and d not in dirs:
+                        dirs.add(d)
+                        d = posixpath.dirname(d)
+                self._evidence = (files, dirs)
+        return self._evidence
+
     def _exists(self, rel: str) -> str | None:
-        """Return the first existing candidate repo-relative path, if any."""
-        full = os.path.join(self.root, rel)
-        return rel if os.path.exists(full) else None
+        """Return the candidate if it exists on disk AND is inside the
+        repo's truth domain (git-visible; everything, outside a git repo)."""
+        if not os.path.exists(os.path.join(self.root, rel)):
+            return None
+        ev = self._evidence_sets()
+        if ev is not None and rel not in ev[0] and rel not in ev[1]:
+            return None
+        return rel
+
+    def _is_ignored(self, rel: str) -> bool:
+        if not self.git:
+            return False
+        if rel not in self._ignored_cache:
+            self._ignored_cache[rel] = gitinfo.is_ignored(self.root, rel)
+        return self._ignored_cache[rel]
+
+    def _ignored_claim(self, claim: Claim) -> bool:
+        """True if a reading of the claim is a gitignored path — such paths
+        are invisible in both directions: never evidence, never reported
+        missing (`.env`-style local files, ADR-018). When the doc itself is
+        gitignored (explicitly passed), its doc-relative readings are
+        trivially ignored and prove nothing — only the repo-root reading
+        counts, else every finding in that doc would vanish."""
+        root_rel = posixpath.normpath(claim.value)
+        doc_ignored = self._is_ignored(claim.doc)
+        for cand in resolve_candidates(claim.value, claim.doc):
+            if doc_ignored and cand != root_rel:
+                continue
+            if self._is_ignored(cand):
+                return True
+        return False
 
     def _resolve(self, claim: Claim) -> tuple[str | None, str]:
         """Returns (resolved repo-relative path | None, how-it-resolved)."""
@@ -108,17 +164,24 @@ class Verifier:
     def _resolve_by_suffix(self, value: str) -> str | None:
         if self._basename_index is None:
             index: dict[str, list[str]] = {}
-            for dirpath, dirnames, filenames in os.walk(self.root):
-                rel_dir = os.path.relpath(dirpath, self.root).replace(os.sep, "/")
-                dirnames[:] = prune_dirnames(rel_dir, dirnames)
-                for name in filenames + dirnames:
-                    rel = name if rel_dir == "." else f"{rel_dir}/{name}"
-                    index.setdefault(name, []).append(rel)
+            ev = self._evidence_sets()
+            if ev is not None:
+                for rel in ev[0] | ev[1]:
+                    if not is_excluded_path(rel):
+                        index.setdefault(rel.rpartition("/")[2], []).append(rel)
+            else:
+                for dirpath, dirnames, filenames in os.walk(self.root):
+                    rel_dir = os.path.relpath(dirpath, self.root).replace(os.sep, "/")
+                    dirnames[:] = prune_dirnames(rel_dir, dirnames)
+                    for name in filenames + dirnames:
+                        rel = name if rel_dir == "." else f"{rel_dir}/{name}"
+                        index.setdefault(name, []).append(rel)
             self._basename_index = index
         value = value.rstrip("/")
         base = value.rpartition("/")[2]
         matches = [rel for rel in self._basename_index.get(base, ())
-                   if rel == value or rel.endswith("/" + value)]
+                   if (rel == value or rel.endswith("/" + value))
+                   and self._exists(rel)]  # git may list files deleted from disk
         return sorted(matches)[0] if matches else None
 
     def _headings_of(self, rel: str) -> set[str] | None:
@@ -137,23 +200,32 @@ class Verifier:
         return slugs
 
     def _iter_corpus_files(self):
-        for dirpath, dirnames, filenames in os.walk(self.root):
-            rel_dir = os.path.relpath(dirpath, self.root).replace(os.sep, "/")
-            dirnames[:] = [d for d in prune_dirnames(rel_dir, dirnames)
-                           if not d.startswith(".git")]
-            for fn in sorted(filenames):
-                # Markdown is excluded from the corpus: a doc mentioning a
-                # symbol must not count as evidence the symbol exists in code
-                # (the claiming doc itself would always satisfy its own claim).
-                if fn.lower().endswith((".md", ".mdx", ".markdown")):
+        ev = self._evidence_sets()
+        if ev is not None:
+            candidates = (os.path.join(self.root, rel) for rel in sorted(ev[0])
+                          if not is_excluded_path(rel)
+                          and not rel.rpartition("/")[2].startswith(".git"))
+        else:
+            def _walk():
+                for dirpath, dirnames, filenames in os.walk(self.root):
+                    rel_dir = os.path.relpath(dirpath, self.root).replace(os.sep, "/")
+                    dirnames[:] = [d for d in prune_dirnames(rel_dir, dirnames)
+                                   if not d.startswith(".git")]
+                    for fn in sorted(filenames):
+                        yield os.path.join(dirpath, fn)
+            candidates = _walk()
+        for full in candidates:
+            # Markdown is excluded from the corpus: a doc mentioning a
+            # symbol must not count as evidence the symbol exists in code
+            # (the claiming doc itself would always satisfy its own claim).
+            if full.lower().endswith((".md", ".mdx", ".markdown")):
+                continue
+            try:
+                if os.path.getsize(full) > _MAX_SYMBOL_FILE_BYTES:
                     continue
-                full = os.path.join(dirpath, fn)
-                try:
-                    if os.path.getsize(full) > _MAX_SYMBOL_FILE_BYTES:
-                        continue
-                except OSError:
-                    continue
-                yield full
+            except OSError:
+                continue
+            yield full
 
     def _search_symbols(self, terms: set[str]) -> set[str]:
         """Return the subset of terms found (word-bounded) anywhere in the repo."""
@@ -198,6 +270,10 @@ class Verifier:
                         res.claims_checked -= 1
                         res.claims_skipped += 1
                         self._explain(res, claim, "skipped: outside repo (`../` cite)")
+                    elif self._ignored_claim(claim):
+                        res.claims_checked -= 1
+                        res.claims_skipped += 1
+                        self._explain(res, claim, "skipped: gitignored")
                     elif claim.type == ClaimType.PATH and not _has_known_ext(claim.value):
                         # `key/value`, `supportsCount/contradictsCount`, bare dir
                         # names — too ambiguous to report as broken when missing.
@@ -225,6 +301,11 @@ class Verifier:
                         res.claims_checked -= 1
                         res.claims_skipped += 1
                         self._explain(res, claim, "skipped: outside repo (`../` cite)")
+                        continue
+                    if not resolved and self._ignored_claim(claim):
+                        res.claims_checked -= 1
+                        res.claims_skipped += 1
+                        self._explain(res, claim, "skipped: gitignored")
                         continue
                     self._explain(res, claim,
                                   f"ok: {resolved} ({how})" if resolved else "MISSING")
@@ -268,6 +349,12 @@ class Verifier:
                     if self._exists(rel):
                         self._explain(res, claim, f"ok: {rel} (doc-relative)")
                         cited_paths.append(rel)
+                    elif self._is_ignored(rel):
+                        # A gitignored import (`@.claude/local-notes.md`) is
+                        # real for this checkout but invisible to the repo.
+                        res.claims_checked -= 1
+                        res.claims_skipped += 1
+                        self._explain(res, claim, "skipped: gitignored")
                     elif not _has_known_ext(claim.value):
                         # `@anthropic-ai/sdk` in prose is a package mention,
                         # not an import — too ambiguous to report.
@@ -287,6 +374,8 @@ class Verifier:
                     res.claims_checked += 1
                     target = claim.extra.get("in_target") or claim.extra.get("in_doc") or doc_path
                     for cand in resolve_candidates(target, doc_path):
+                        if not self._exists(cand):
+                            continue  # gitignored/absent target: no verdict either way
                         slugs = self._headings_of(cand)
                         if slugs is not None:
                             if claim.value.lower() not in slugs:

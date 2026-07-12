@@ -225,3 +225,41 @@ reads git history.
 **Consequences.** Adoptable from a tag today; PyPI is now only the
 `pip install claimcheck` convenience, not a blocker. Wrappers are config,
 not behavior — no unit tests; the `action` CI job is their test.
+
+## ADR-018 · 2026-07-12 · Git-visible files are the truth domain
+
+**Context.** The very first CI run failed on a check that passed locally:
+a doc cited a gitignored file that existed in the local checkout but not in
+the CI clone. Determinism (ADR-003) must hold *across checkouts*, not just
+across reruns — local-only files are the same evidence hazard as stale
+worktrees (ADR-014).
+
+**Decision.** In a git repo, the truth domain is what git sees: tracked plus
+untracked-but-not-ignored paths (one `git ls-files` call), intersected with
+what is actually on disk. Gitignored paths are invisible in *both*
+directions — never evidence, and never reported missing (a cite of a
+`.env`-style local file counts as skipped; the doc-relative reading is
+exempt when the doc itself is gitignored and explicitly passed, else all its
+findings would vanish). Doc discovery follows the same rule; an explicitly
+named file always overrides the filter. Outside git, filesystem walks as
+before.
+
+**Consequences.** `check` gives the same verdict in a working checkout and
+a fresh clone. Empty directories are no longer evidence (git cannot see
+them) — matching what a clone would contain. Symbol corpus and suffix index
+come from the git list: faster on big repos, and local scratch files can no
+longer satisfy symbol claims.
+
+## ADR-019 · 2026-07-12 · Stamp staleness sees the working tree
+
+**Context.** Same CI failure, second root cause: staleness diffed
+`stamp..HEAD`, so docs restamped-then-edited-again in one session looked
+fresh locally until after the commit — the check passed at the moment it was
+most needed (pre-commit) and failed in CI.
+
+**Decision.** `changed_files_since` diffs `<stamp>` against the working tree
+(no `..HEAD`): a stamp goes stale the moment a cited file is edited.
+
+**Consequences.** `check --strict` before committing now catches
+stamp-invalidating edits made after the stamp — the release workflow's
+"stamp, then keep hacking" failure mode is closed.
