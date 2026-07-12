@@ -23,6 +23,15 @@ ADR-012) · command claims in shell fences (`command-path-missing`, ADR-011) ·
 `check --explain` resolution tracing · `[claimcheck.severity]` per-code
 overrides · `stamp --all-stale` with re-verify checklist.
 
+## Shipped · v0.4.0 (2026-07-12) — first field-report round
+
+All four from the first external user (an agent repairing a production KB):
+absence claims via `claimcheck:gone`, `gone-still-exists` (ADR-020) ·
+targeted inline ignore `claimcheck:ignore <glob>` (ADR-021) · bugfix:
+leading `../` now survives ellipsis trimming, so abbreviated sibling cites
+skip instead of false-erroring · note to stderr when claimcheck's root and
+git's toplevel disagree (vestigial `.git` layouts).
+
 ## Shipped · v0.3.2 (2026-07-12) — determinism across checkouts
 
 Found by our own first CI run failing while local passed. Git-visible files
@@ -58,6 +67,11 @@ itself (ADR-017).
   `index.ts` matching 40 files)? Currently first-match-wins satisfies
   existence, which can hide a deletion when a same-named file exists elsewhere.
   (v0.3's worktree exclusion removed the worst instance of this in the field.)
+- Doc-relative reading of `../` cites can "un-escape" a sibling cite into an
+  in-repo candidate that coincidentally exists (field report #5). Kept as-is:
+  for links, `../` relative to the doc is the markdown-defined semantic, and
+  for paths the false-satisfy needs an unlucky same-path coincidence.
+  Revisit with a real instance.
 - Import-graph reachability: extract `@` imports from any file transitively
   imported by CLAUDE.md, instead of the basename gate (ADR-013)?
 - Stamp granularity: per-doc today; per-section stamps for long KB files?

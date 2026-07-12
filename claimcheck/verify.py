@@ -260,6 +260,28 @@ class Verifier:
             stamp_claims: list[Claim] = []
 
             for claim in claims:
+                if claim.extra.get("gone") and claim.type in (
+                        ClaimType.PATH, ClaimType.LINE_REF, ClaimType.LINK):
+                    # Absence claim (claimcheck:gone): the doc asserts this
+                    # path no longer exists; error if it (re)appears.
+                    res.claims_checked += 1
+                    resolved, how = self._resolve(claim)
+                    if not resolved and how == "outside-repo":
+                        res.claims_checked -= 1
+                        res.claims_skipped += 1
+                        self._explain(res, claim, "skipped: outside repo (`../` cite)")
+                        continue
+                    if resolved:
+                        self._explain(res, claim, f"GONE but exists: {resolved}")
+                        res.findings.append(Finding(
+                            doc_path, claim.line, "error", "gone-still-exists",
+                            f"`{claim.value}` is documented as gone but exists "
+                            f"at `{resolved}`",
+                        ))
+                    else:
+                        self._explain(res, claim, "ok: gone as documented")
+                    continue
+
                 if claim.type in (ClaimType.PATH, ClaimType.LINK):
                     res.claims_checked += 1
                     resolved, how = self._resolve(claim)
@@ -427,7 +449,18 @@ class Verifier:
             found = self._search_symbols(terms)
             for claim in symbol_claims:
                 res.claims_checked += 1
-                if claim.extra["term"] not in found:
+                if claim.extra.get("gone"):
+                    # Inverted: the doc asserts the symbol is gone. Stays at
+                    # symbol severity — a word-boundary hit could be a
+                    # lingering comment, not a live definition.
+                    if claim.extra["term"] in found:
+                        res.findings.append(Finding(
+                            claim.doc, claim.line, self.symbol_severity,
+                            "gone-still-exists",
+                            f"symbol `{claim.value}` is documented as gone "
+                            f"but still appears in the repo",
+                        ))
+                elif claim.extra["term"] not in found:
                     res.findings.append(Finding(
                         claim.doc, claim.line, self.symbol_severity, "symbol-missing",
                         f"symbol `{claim.value}` not found anywhere in the repo",

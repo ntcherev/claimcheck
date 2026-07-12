@@ -35,6 +35,7 @@ keys. Exit codes are CI-friendly: `0` clean, `1` drift found, `2` usage error.
 | Symbol | `` `Planner.execute()` ``, `` `Foo#bar` `` | `symbol-missing` |
 | Command path | `./scripts/dev.sh` inside a ```` ```bash ```` fence | `command-path-missing` |
 | Memory import | `@AGENTS.md` in `CLAUDE.md` / `AGENTS.md` prose | `import-missing` |
+| Absence | `` `OldTool.java` was deleted `` + `claimcheck:gone` marker | `gone-still-exists` |
 | Commit citation | `verified against commit abc1234` | `commit-missing` | <!-- claimcheck:ignore -->
 
 | Freshness stamp | `verified-commit:` front matter | `stamp-stale` |
@@ -118,7 +119,7 @@ As a GitHub Action (checkout with history so freshness stamps can be verified):
 - uses: actions/checkout@v4
   with:
     fetch-depth: 0
-- uses: ntcherev/claimcheck@v0.3.2
+- uses: ntcherev/claimcheck@v0.4.0
   with:
     paths: docs        # optional, default: whole repo
     strict: "true"     # optional, fail on warnings too
@@ -129,7 +130,7 @@ As a pre-commit hook (checks only docs you touched — instant on non-doc commit
 ```yaml
 repos:
   - repo: https://github.com/ntcherev/claimcheck
-    rev: v0.3.2
+    rev: v0.4.0
     hooks:
       - id: claimcheck
 ```
@@ -149,7 +150,14 @@ fences = "warn"                 # off | warn | error — path claims in ```bash 
 anchor-missing = "error"        # off | warn | error
 ```
 
-Suppress a single line with an HTML comment: `` `old/path.py` `` `<!-- claimcheck:ignore -->`.
+Inline markers (HTML comments, invisible when rendered):
+
+- `<!-- claimcheck:ignore -->` — the whole line is invisible to the checker.
+- `<!-- claimcheck:ignore weird/* -->` — only claim targets on this line
+  matching the glob(s) are dropped; every other cite stays verified.
+- `<!-- claimcheck:gone -->` — inverts the line's claims: the doc asserts
+  these paths/symbols **no longer exist**, and a revert that resurrects one
+  flags every doc that recorded the deletion (`gone-still-exists`).
 
 ## Scope, honestly
 

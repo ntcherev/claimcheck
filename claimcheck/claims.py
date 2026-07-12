@@ -14,6 +14,7 @@ Claim types:
 
 from __future__ import annotations
 
+import fnmatch
 import posixpath
 import re
 from dataclasses import dataclass, field
@@ -172,10 +173,15 @@ def extract(doc: Document, symbols_enabled: bool = True,
         token = code.text.strip().removeprefix("./")
         # Docs abbreviate deep paths: `.../tripwire/TripwireExecutor.java`,
         # `shared/.../RoleType.java`. Keep what follows the last ellipsis;
-        # suffix resolution in the verifier finds the file.
+        # suffix resolution in the verifier finds the file. A leading `../`
+        # must survive the trim — `../genai/.../Provider.java` explicitly
+        # points outside the repo and must stay an outside-repo cite.
+        escapes = token.startswith("../")
         for ellipsis in (".../", "…/"):
             if ellipsis in token:
                 token = token.split(ellipsis)[-1]
+        if escapes and not token.startswith("../"):
+            token = "../" + token
         if not token:
             continue
         m = _LINE_REF_RE.match(token)
@@ -229,6 +235,16 @@ def extract(doc: Document, symbols_enabled: bool = True,
                 extra={"stamp": True},
             ))
             break
+
+    _GONE_TYPES = (ClaimType.PATH, ClaimType.LINE_REF, ClaimType.LINK, ClaimType.SYMBOL)
+    for claim in claims:
+        if claim.line in doc.gone_lines and claim.type in _GONE_TYPES:
+            claim.extra["gone"] = True
+
+    if doc.ignore_patterns:
+        claims = [c for c in claims
+                  if not any(fnmatch.fnmatch(c.value, p)
+                             for p in doc.ignore_patterns.get(c.line, ()))]
 
     return claims
 

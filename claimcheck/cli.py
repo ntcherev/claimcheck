@@ -45,6 +45,14 @@ def cmd_check(args) -> int:
     except ValueError as e:
         print(f"error: {e}", file=sys.stderr)
         return 2
+    # Multi-repo/worktree layouts can leave a vestigial `.git` entry that
+    # find_root trusts but git itself resolves elsewhere; say so instead of
+    # verifying against a spooky boundary.
+    if gitinfo.is_git_repo(root):
+        top = gitinfo.toplevel(root)
+        if top and os.path.realpath(top) != os.path.realpath(root):
+            print(f"note: claimcheck root is {root} but git's toplevel is {top}; "
+                  f"git evidence is scoped to the root subtree", file=sys.stderr)
     symbols = "off" if args.no_symbols else cfg.symbols
     docs = discover(args.paths, cfg)
     if not docs:

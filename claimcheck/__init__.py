@@ -6,4 +6,4 @@ worse than useless. claimcheck extracts verifiable claims from markdown
 them against the codebase. Deterministic, stdlib-only, CI-friendly.
 """
 
-__version__ = "0.3.2"
+__version__ = "0.4.0"

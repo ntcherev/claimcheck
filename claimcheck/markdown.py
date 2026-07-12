@@ -20,6 +20,7 @@ _LINK_RE = re.compile(r"!?\[([^\]]*)\]\(\s*<?([^)<>\s]+)>?(?:\s+[\"'][^\"']*[\"'
 _FRONT_MATTER_KV_RE = re.compile(r"^([A-Za-z0-9_-]+)\s*:\s*(.*)$")
 
 IGNORE_MARKER = "claimcheck:ignore"
+GONE_MARKER = "claimcheck:gone"
 
 
 @dataclass
@@ -59,6 +60,8 @@ class Document:
     headings: list[Heading] = field(default_factory=list)
     fences: list[FencedBlock] = field(default_factory=list)
     prose_lines: list[tuple[int, str]] = field(default_factory=list)  # lines outside fences/fm
+    gone_lines: set[int] = field(default_factory=set)  # claimcheck:gone — absence claims
+    ignore_patterns: dict[int, list[str]] = field(default_factory=dict)  # targeted ignores
 
 
 def parse(text: str, path: str = "<memory>") -> Document:
@@ -102,7 +105,17 @@ def parse(text: str, path: str = "<memory>") -> Document:
             continue
 
         if IGNORE_MARKER in line:
-            continue
+            # Bare marker: the whole line is invisible. With arguments
+            # (`claimcheck:ignore <glob>…`) only matching claim targets on
+            # this line are dropped — dense KB lines keep their good cites.
+            rest = line[line.find(IGNORE_MARKER) + len(IGNORE_MARKER):]
+            patterns = rest.replace("-->", " ").split()
+            if not patterns:
+                continue
+            doc.ignore_patterns[lineno] = patterns
+        if GONE_MARKER in line:
+            # Absence claims: paths/symbols on this line must NOT exist.
+            doc.gone_lines.add(lineno)
 
         doc.prose_lines.append((lineno, line))
 

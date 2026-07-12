@@ -37,7 +37,8 @@ Every stage is a separate module with a plain-data interface between stages:
 - `verify.Finding` — `(doc, line, severity, code, message)`; codes are the
   stable public vocabulary (`path-missing`, `line-out-of-range`,
   `link-broken`, `anchor-missing`, `symbol-missing`, `command-path-missing`,
-  `import-missing`, `commit-missing`, `stamp-stale`). Severities are remappable per code via
+  `import-missing`, `commit-missing`, `stamp-stale`, `gone-still-exists`).
+  Severities are remappable per code via
   `[claimcheck.severity]`; `check --explain` records how each path claim
   resolved (repo-root / doc-relative / suffix-match).
 
@@ -72,6 +73,9 @@ Reporting rules that keep errors trustworthy:
   explicitly named files override. Outside git: plain filesystem walks.
 - Stamp staleness diffs the stamp against the working tree, not just
   `..HEAD` — uncommitted edits to cited files already count (ADR-019).
+- A `claimcheck:gone` line inverts its claims — the doc asserts absence,
+  resolving is the failure (ADR-020). `claimcheck:ignore <glob>` drops only
+  matching targets on its line; bare, it still hides the line (ADR-021).
 
 ## Stamp staleness
 
@@ -84,7 +88,7 @@ doc freshness a checkable property.
 
 ## Testing
 
-`python3 -m unittest discover -s tests` — 99 tests: unit (markdown parsing,
+`python3 -m unittest discover -s tests` — 112 tests: unit (markdown parsing,
 claim heuristics) and integration (real temp git repos exercising the full
 check/stamp/stale cycle through `cli.main`). No test doubles for git; the
 real binary runs against throwaway repos.

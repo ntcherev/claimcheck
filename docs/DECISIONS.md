@@ -263,3 +263,36 @@ most needed (pre-commit) and failed in CI.
 **Consequences.** `check --strict` before committing now catches
 stamp-invalidating edits made after the stamp — the release workflow's
 "stamp, then keep hacking" failure mode is closed.
+
+## ADR-020 · 2026-07-12 · Absence claims (claimcheck:gone)
+
+**Context.** First external field report (an agent repairing a production KB
+against 929 claims): drift docs constantly make *negative* claims —
+"X.java was deleted", "no Y in this repo" — and the checker read them as
+positive cites, forcing rewording around the parser. The reporter asked for
+a marker that also errors when the file reappears.
+
+**Decision.** A line containing `claimcheck:gone` inverts its PATH /
+LINE_REF / LINK / SYMBOL claims: resolving is the failure. New code
+`gone-still-exists` — `error` for paths (resolution includes suffix match,
+so a bare `BraveTool.java` gone-claim catches a reappearance anywhere);
+symbol severity for symbols, since a word-boundary hit may be a lingering
+comment rather than a live definition. Outside-repo gone-cites are skipped
+like their positive counterparts.
+
+**Consequences.** Negative documentation is now checkable instead of noise,
+and a revert that resurrects a "deleted" file flags every doc that recorded
+the deletion.
+
+## ADR-021 · 2026-07-12 · Targeted inline ignore
+
+**Context.** Same field report: `claimcheck:ignore` is line-granular, but
+dense KB lines pack several good cites around one unverifiable token —
+ignoring the line throws away real coverage.
+
+**Decision.** `claimcheck:ignore <glob>…` (with arguments) drops only the
+claims on that line whose target matches a glob; the rest of the line stays
+verified. The bare marker keeps its skip-the-whole-line meaning.
+
+**Consequences.** Dense lines keep their coverage. The glob text itself sits
+inside an HTML comment, which the inline-code scanner never reads.
