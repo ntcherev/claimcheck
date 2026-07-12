@@ -78,9 +78,9 @@ Reporting rules that keep errors trustworthy:
 For a doc with `verified-commit` front matter, the verifier collects the
 doc's *resolved* cited paths, filters them to regular **code files**
 (markdown and directories are excluded — ADR-009), then asks git for files
-among them changed in `stamp..HEAD`. Any change → `stamp-stale` warn naming
-the changed files. This is the loop that makes doc freshness a checkable
-property.
+among them changed since the stamp — committed or not (ADR-019). Any change
+→ `stamp-stale` warn naming the changed files. This is the loop that makes
+doc freshness a checkable property.
 
 ## Testing
 
