@@ -1,6 +1,6 @@
 ---
-verified-commit: bde8afa877dd93a5f99e49264b19d84dacddeaad
-verified-date: 2026-07-11
+verified-commit: ab6e968c2063d72bb539900509425376da5470d1
+verified-date: 2026-07-12
 ---
 # Decision log
 
