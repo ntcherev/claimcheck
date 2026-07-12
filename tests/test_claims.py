@@ -17,8 +17,16 @@ class TestPathHeuristic(unittest.TestCase):
         for token in ("application/json", "text/html", "hello", "e.g", "v1.2.3",
                       "http://x.com/a", "~", "~/notes", "a b.py", "glob/*.py",
                       "{placeholder}/x.py", "<path>/y.py", "$HOME/z.py", "",
-                      "SIGNAL_PENDING/ROUTED/COVERAGE_ONLY/STREAM_PROPOSED"):
+                      "SIGNAL_PENDING/ROUTED/COVERAGE_ONLY/STREAM_PROPOSED",
+                      "-implementation-contract.md", "-suffix/part.py"):
             self.assertFalse(looks_like_path(token), token)
+
+    def test_leading_hyphen_is_suffix_shorthand(self):
+        # Docs write `spec.md` + `-implementation-contract.md` to mean
+        # "same prefix"; the fragment must not become a path claim.
+        claims = extract(parse("See `a-spec.md` + `-impl-contract.md`.\n", "x.md"))
+        self.assertEqual([(c.type, c.value) for c in claims],
+                         [(ClaimType.PATH, "a-spec.md")])
 
     def test_ellipsis_prefix_stripped(self):
         claims = extract(parse("See `.../tripwire/TripwireExecutor.java`.\n", "x.md"))

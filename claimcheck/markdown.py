@@ -125,6 +125,13 @@ def parse(text: str, path: str = "<memory>") -> Document:
     return doc
 
 
+def mask_inline_code(line: str) -> str:
+    """The line with inline code spans blanked out. Prose-token scans
+    (memory imports) must not see code-span content — `` `@x` `` is the
+    documented way to write an @ token that is not an import."""
+    return _INLINE_CODE_RE.sub(lambda m: " " * len(m.group(0)), line)
+
+
 def anchor_slug(heading_text: str) -> str:
     """GitHub-style anchor slug (approximate: no duplicate-suffix handling)."""
     text = heading_text.strip().lower()

@@ -74,11 +74,28 @@ class TestPathClaims(RepoCase):
         self.assertEqual(res.findings, [])
         self.assertEqual(res.claims_skipped, 2)  # docs/kb exists → checked
 
-    def test_parent_relative_resolved_by_suffix(self):
+    def test_parent_relative_resolved_doc_relatively(self):
         write(self.root, "api/pom.xml", "<project/>\n")
         write(self.root, "api/docs/setup.md", "Copy `../pom.xml` first.\n")
         res = self.check_doc("api/docs/setup.md")
         self.assertEqual(res.findings, [])
+
+    def test_escaping_parent_cite_skipped_not_reported(self):
+        # `../credentials.properties` in a multi-repo workspace points at a
+        # sibling checkout — unverifiable here, so skip; and an in-tree file
+        # with the same basename must NOT pose as evidence (ADR-016).
+        write(self.root, "credentials.properties", "k=v\n")
+        write(self.root, "doc.md",
+              "Copy `../credentials.properties` and `../shared/pom.xml`.\n")
+        res = self.check_doc("doc.md")
+        self.assertEqual(res.findings, [])
+        self.assertEqual(res.claims_skipped, 2)
+
+    def test_escaping_line_ref_skipped(self):
+        write(self.root, "doc.md", "See `../sibling/Main.java:40`.\n")
+        res = self.check_doc("doc.md")
+        self.assertEqual(res.findings, [])
+        self.assertEqual(res.claims_skipped, 1)
 
     def test_bare_filename_resolved_by_suffix(self):
         write(self.root, "src/main/java/deep/AgentManager.java", "class A {}\n")

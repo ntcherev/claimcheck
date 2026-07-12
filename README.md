@@ -32,6 +32,7 @@ keys. Exit codes are CI-friendly: `0` clean, `1` drift found, `2` usage error.
 | Anchor | `[setup](README.md#install)` | `anchor-missing` |
 | Symbol | `` `Planner.execute()` ``, `` `Foo#bar` `` | `symbol-missing` |
 | Command path | `./scripts/dev.sh` inside a ```` ```bash ```` fence | `command-path-missing` |
+| Memory import | `@AGENTS.md` in `CLAUDE.md` / `AGENTS.md` prose | `import-missing` |
 | Commit citation | `verified against commit abc1234` | `commit-missing` | <!-- claimcheck:ignore -->
 
 | Freshness stamp | `verified-commit:` front matter | `stamp-stale` |
@@ -42,6 +43,21 @@ and abbreviated `.../deep/File.java` citations resolve). Ambiguous
 extension-less tokens (`key/value`) are skipped, not reported — errors are
 meant to be trustworthy. Symbol checks deliberately ignore markdown files as
 evidence: a doc mentioning a symbol must not vouch for its own claim.
+
+Three deliberate exceptions keep agent-facing checks honest:
+
+- **Memory imports get runtime semantics.** A `@path` import in `CLAUDE.md`,
+  `CLAUDE.local.md`, or `AGENTS.md` is checked exactly where the agent
+  runtime would load it — relative to the importing file, no generous
+  fallbacks. A dangling import silently loads nothing, so it reports as an
+  error. Skill docs (`.claude/skills/**/SKILL.md`) are checked like any
+  other markdown.
+- **Cites that escape the repo are skipped.** `../sibling-repo/pom.xml` in a
+  multi-repo workspace can't be verified inside this checkout, so it counts
+  as skipped rather than failing your CI.
+- **Stale agent worktrees are never evidence.** Files under
+  `.claude/worktrees` (leftover agent checkouts) don't satisfy claims — a
+  deleted file "existing" in a stale copy would mask real drift.
 
 ## The stamp workflow
 

@@ -6,6 +6,7 @@ symbols = "warn"
 ignore = [
     "*.java",            # no Java here; every .java mention is an example
     "SKILL.md",
+    "CLAUDE.local.md",   # illustrative in docs; this repo has no local memory
     "index.ts",
     "src/planner.py",
     "src/loop.py",

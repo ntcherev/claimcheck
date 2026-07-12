@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import posixpath
 import re
 from dataclasses import dataclass, field
 
@@ -10,13 +11,31 @@ from . import gitinfo
 from .claims import KNOWN_EXTS, Claim, ClaimType, resolve_candidates
 from .markdown import anchor_slug, parse
 
-# Directories never scanned for the symbol-search corpus.
+# Directories never walked (doc discovery, suffix index, symbol corpus).
 EXCLUDE_DIRS = {
     ".git", "node_modules", "venv", ".venv", "env", "__pycache__", "target",
     "dist", "build", "out", ".idea", ".vscode", ".gradle", ".mvn", ".next",
     ".cache", "coverage", ".pytest_cache", ".mypy_cache", ".ruff_cache",
 }
+# Repo-relative directories never walked: `.claude/worktrees` holds full
+# agent-checkout copies of the repo, and a stale copy satisfying a claim
+# masks real drift (ADR-014). `.claude` itself stays walkable — skills
+# docs live there.
+EXCLUDE_REL_DIRS = {".claude/worktrees"}
 _MAX_SYMBOL_FILE_BYTES = 1_000_000
+
+
+def prune_dirnames(rel_dir: str, dirnames: list[str]) -> list[str]:
+    """Sorted subdirs to descend into, honoring both exclusion sets.
+    `rel_dir` is the parent's repo-relative posix path ("." at the root)."""
+    keep = []
+    for d in sorted(dirnames):
+        if d in EXCLUDE_DIRS:
+            continue
+        if (d if rel_dir in (".", "") else f"{rel_dir}/{d}") in EXCLUDE_REL_DIRS:
+            continue
+        keep.append(d)
+    return keep
 
 
 def _has_known_ext(value: str) -> bool:
@@ -65,10 +84,16 @@ class Verifier:
 
     def _resolve(self, claim: Claim) -> tuple[str | None, str]:
         """Returns (resolved repo-relative path | None, how-it-resolved)."""
+        root_rel = posixpath.normpath(claim.value)
         cands = resolve_candidates(claim.value, claim.doc)
-        for cand, how in zip(cands, ("repo-root", "doc-relative")):
+        for cand in cands:
             if self._exists(cand):
-                return cand, how
+                return cand, ("repo-root" if cand == root_rel else "doc-relative")
+        # A `../` cite that no in-repo reading satisfies points at a sibling
+        # checkout (multi-repo workspaces do this); an in-tree suffix match
+        # would be a different file posing as evidence (ADR-016).
+        if not cands or root_rel.startswith(".."):
+            return None, "outside-repo"
         # Docs cite files by bare name (`AgentManager.java`) or partial path
         # (`agents/screener.yml`, `.../tripwire/TripwireExecutor.java`).
         # Fall back to "exists anywhere in the tree" by suffix match.
@@ -84,15 +109,13 @@ class Verifier:
         if self._basename_index is None:
             index: dict[str, list[str]] = {}
             for dirpath, dirnames, filenames in os.walk(self.root):
-                dirnames[:] = sorted(d for d in dirnames if d not in EXCLUDE_DIRS)
                 rel_dir = os.path.relpath(dirpath, self.root).replace(os.sep, "/")
+                dirnames[:] = prune_dirnames(rel_dir, dirnames)
                 for name in filenames + dirnames:
                     rel = name if rel_dir == "." else f"{rel_dir}/{name}"
                     index.setdefault(name, []).append(rel)
             self._basename_index = index
         value = value.rstrip("/")
-        while value.startswith("../"):  # `../pom.xml` cited relative to elsewhere
-            value = value[3:]
         base = value.rpartition("/")[2]
         matches = [rel for rel in self._basename_index.get(base, ())
                    if rel == value or rel.endswith("/" + value)]
@@ -115,7 +138,9 @@ class Verifier:
 
     def _iter_corpus_files(self):
         for dirpath, dirnames, filenames in os.walk(self.root):
-            dirnames[:] = sorted(d for d in dirnames if d not in EXCLUDE_DIRS and not d.startswith(".git"))
+            rel_dir = os.path.relpath(dirpath, self.root).replace(os.sep, "/")
+            dirnames[:] = [d for d in prune_dirnames(rel_dir, dirnames)
+                           if not d.startswith(".git")]
             for fn in sorted(filenames):
                 # Markdown is excluded from the corpus: a doc mentioning a
                 # symbol must not count as evidence the symbol exists in code
@@ -169,6 +194,10 @@ class Verifier:
                     if resolved:
                         self._explain(res, claim, f"ok: {resolved} ({how})")
                         cited_paths.append(resolved)
+                    elif how == "outside-repo":
+                        res.claims_checked -= 1
+                        res.claims_skipped += 1
+                        self._explain(res, claim, "skipped: outside repo (`../` cite)")
                     elif claim.type == ClaimType.PATH and not _has_known_ext(claim.value):
                         # `key/value`, `supportsCount/contradictsCount`, bare dir
                         # names — too ambiguous to report as broken when missing.
@@ -192,6 +221,11 @@ class Verifier:
                 elif claim.type == ClaimType.LINE_REF:
                     res.claims_checked += 1
                     resolved, how = self._resolve(claim)
+                    if not resolved and how == "outside-repo":
+                        res.claims_checked -= 1
+                        res.claims_skipped += 1
+                        self._explain(res, claim, "skipped: outside repo (`../` cite)")
+                        continue
                     self._explain(res, claim,
                                   f"ok: {resolved} ({how})" if resolved else "MISSING")
                     if not resolved:
@@ -213,6 +247,40 @@ class Verifier:
                         res.findings.append(Finding(
                             doc_path, claim.line, "error", "line-out-of-range",
                             f"`{claim.value}` cites line {end} but the file has {n_lines} lines",
+                        ))
+
+                elif claim.type == ClaimType.IMPORT:
+                    # Memory imports resolve exactly as the agent runtime
+                    # does: relative to the importing file, no fallbacks —
+                    # a same-named file elsewhere in the tree would not
+                    # stop the import from being broken (ADR-013).
+                    if claim.extra.get("outside_repo"):
+                        res.claims_skipped += 1
+                        self._explain(res, claim, "skipped: outside repo (home/absolute import)")
+                        continue
+                    rel = posixpath.normpath(
+                        posixpath.join(posixpath.dirname(claim.doc), claim.value))
+                    if rel.startswith(".."):
+                        res.claims_skipped += 1
+                        self._explain(res, claim, "skipped: outside repo (escapes root)")
+                        continue
+                    res.claims_checked += 1
+                    if self._exists(rel):
+                        self._explain(res, claim, f"ok: {rel} (doc-relative)")
+                        cited_paths.append(rel)
+                    elif not _has_known_ext(claim.value):
+                        # `@anthropic-ai/sdk` in prose is a package mention,
+                        # not an import — too ambiguous to report.
+                        res.claims_checked -= 1
+                        res.claims_skipped += 1
+                        self._explain(res, claim, "skipped: ambiguous (no known extension)")
+                    else:
+                        self._explain(res, claim, "MISSING")
+                        res.findings.append(Finding(
+                            doc_path, claim.line, "error", "import-missing",
+                            f"`@{claim.value}` import does not resolve — the agent "
+                            f"runtime looks relative to the importing file, and "
+                            f"`{rel}` does not exist",
                         ))
 
                 elif claim.type == ClaimType.ANCHOR:

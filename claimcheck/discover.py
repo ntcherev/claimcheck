@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 
 from .config import Config
-from .verify import EXCLUDE_DIRS
+from .verify import prune_dirnames
 
 DOC_EXTS = (".md", ".mdx", ".markdown")
 
@@ -23,7 +23,8 @@ def discover(paths: list[str], cfg: Config) -> list[str]:
                 found.add(rel)
             continue
         for dirpath, dirnames, filenames in os.walk(full):
-            dirnames[:] = sorted(d for d in dirnames if d not in EXCLUDE_DIRS)
+            rel_dir = os.path.relpath(dirpath, root).replace(os.sep, "/")
+            dirnames[:] = prune_dirnames(rel_dir, dirnames)
             for fn in sorted(filenames):
                 if fn.lower().endswith(DOC_EXTS):
                     rel = os.path.relpath(os.path.join(dirpath, fn), root)

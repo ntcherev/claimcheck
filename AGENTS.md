@@ -5,8 +5,9 @@ verified-date: 2026-07-11
 # claimcheck — orientation for agents and future sessions
 
 A linter that keeps agent-facing docs true: extracts verifiable claims
-(paths, line refs, links, anchors, symbols, commit citations) from markdown
-and checks them against the codebase. Stdlib-only Python (≥3.11), zero deps.
+(paths, line refs, links, anchors, symbols, memory imports, commit citations)
+from markdown and checks them against the codebase. Stdlib-only Python
+(≥3.11), zero deps.
 
 **Catch up in this order:**
 1. `docs/DECISIONS.md` — ADR log; read before changing any behavior, several

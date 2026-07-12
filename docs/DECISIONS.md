@@ -138,3 +138,71 @@ pass, not an error; a bad ref exits 2.
 **Consequences.** Safe as a pre-commit hook: new docs are caught before their
 first commit, and unchanged-doc drift (code moved under a stale doc) is
 deliberately out of scope for `--since` — run the full `check` in CI for that.
+
+## ADR-013 · 2026-07-12 · Memory-import claims (`@path`) in agent context files
+
+**Context.** Per Claude Code's memory docs, `CLAUDE.md`/`CLAUDE.local.md`
+evaluate `@path` import tokens (recursively through imported files, max 4
+hops); relative paths resolve against the file containing the import; imports
+inside code spans and fences are not evaluated. A dangling import silently
+loads nothing — the highest-signal drift an agent-facing doc can have.
+
+**Decision.** New claim type IMPORT, extracted from the prose of files whose
+basename is `CLAUDE.md`, `CLAUDE.local.md`, or `AGENTS.md` (the dominant
+import target — the true rule is import-graph reachability; the basename gate
+is the precise-enough subset without cross-doc state). Verified exactly as
+the runtime resolves: relative to the importing doc, **no** suffix-match
+rescue — a same-named file elsewhere would not fix the import. Finding code
+`import-missing`, severity `error`. Home-dir/absolute imports and tokens
+without a known extension (`@scope/pkg` package mentions) are counted
+skipped, never reported.
+
+**Consequences.** Extension-less imports like `@README` are invisible
+(`looks_like_path` needs a slash or known extension) — recall sacrificed per
+ADR-005. Skills needed no new machinery: `.claude/skills/**/SKILL.md` was
+already discovered as ordinary markdown; tests now lock that in. SKILL.md
+front-matter validation was considered and **rejected**: current docs make
+`name` optional (directory name wins) and `description` recommended-only, so
+mismatch/missing warnings would be false positives.
+
+## ADR-014 · 2026-07-12 · `.claude/worktrees` is never evidence
+
+**Context.** Corpus run: several claims resolved by suffix match into
+`.claude/worktrees/agent-*/…` — stale full checkouts left by coding agents. A
+deleted file "existing" only in a leftover worktree masks real drift, and
+worktree doc copies would be scanned as docs.
+
+**Decision.** Repo-relative exclusion set (`EXCLUDE_REL_DIRS =
+{".claude/worktrees"}`) honored by all three walkers: doc discovery, the
+basename index, and the symbol corpus. `.claude` itself stays walkable —
+skills docs live there.
+
+**Consequences.** Corpus errors rose 13 → 29; each new one verified genuine
+within the repo boundary — which surfaced ADR-016.
+
+## ADR-015 · 2026-07-12 · Leading-hyphen tokens are suffix shorthand
+
+**Context.** Corpus: `` `…-v2-spec.md` + `-implementation-contract.md` `` —
+prose shorthand for "same prefix, this suffix". The full file exists; the
+fragment reported as missing was a false positive.
+
+**Decision.** `looks_like_path` rejects tokens starting with `-`. Real files
+essentially never start with a hyphen (they break every CLI tool).
+
+## ADR-016 · 2026-07-12 · Cites escaping the repo root are skipped, not reported
+
+**Context.** The validation corpus is one module of a multi-repo workspace;
+its docs cite sibling checkouts (`../shared/pom.xml`,
+`../credentials.properties`). ADR-005's leading-`../` strip let in-tree files
+with matching basenames pose as evidence — the wrong file, silently. With
+worktrees excluded (ADR-014), these cites surfaced as errors instead — but a
+sibling checkout is unverifiable inside a hermetic CI checkout (ADR-003).
+
+**Decision.** A path-ish claim none of whose in-repo readings exists and
+whose written form escapes the root is skipped and counted (`--explain` says
+`outside repo`). The `../` strip in suffix matching is gone;
+`resolve_candidates` may now return empty (every reading escapes).
+
+**Consequences.** Corpus: 29 → 22 errors, 12 more skips; every remaining
+error spot-checked as genuine drift. A truly deleted in-repo file cited via
+`../` is no longer reported — precision over recall, as ever.

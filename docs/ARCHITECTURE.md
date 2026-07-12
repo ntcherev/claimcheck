@@ -33,11 +33,11 @@ Every stage is a separate module with a plain-data interface between stages:
   fenced blocks, prose lines; all carry 1-based line numbers.
 - `claims.Claim` — `(type, value, doc, line, extra)`. `extra` holds line
   ranges for LINE_REF, the search term for SYMBOL, `stamp: True` for
-  front-matter commits.
+  front-matter commits, `outside_repo: True` for home/absolute IMPORTs.
 - `verify.Finding` — `(doc, line, severity, code, message)`; codes are the
   stable public vocabulary (`path-missing`, `line-out-of-range`,
   `link-broken`, `anchor-missing`, `symbol-missing`, `command-path-missing`,
-  `commit-missing`, `stamp-stale`). Severities are remappable per code via
+  `import-missing`, `commit-missing`, `stamp-stale`). Severities are remappable per code via
   `[claimcheck.severity]`; `check --explain` records how each path claim
   resolved (repo-root / doc-relative / suffix-match).
 
@@ -58,6 +58,14 @@ Reporting rules that keep errors trustworthy:
   warn by default). Output/example fences (```text, ```python, bare) never are.
 - SYMBOL search excludes markdown from its corpus — a doc must not vouch for
   its own claim — and is word-boundary based over text files ≤ 1 MB.
+- IMPORT claims (`@path` in CLAUDE.md / CLAUDE.local.md / AGENTS.md prose,
+  ADR-013) are the exception to generosity: resolved only relative to the
+  importing doc, exactly as the agent runtime loads them — no suffix rescue.
+- Cites whose every in-repo reading escapes the root (`../sibling/pom.xml`
+  in a multi-repo workspace) are skipped, not reported (ADR-016).
+- `.claude/worktrees` (stale agent checkouts) is excluded from every walk —
+  discovery, basename index, symbol corpus (ADR-014). `.claude` itself is
+  walked so `.claude/skills/**/SKILL.md` docs are checked like any other.
 
 ## Stamp staleness
 
@@ -70,7 +78,7 @@ property.
 
 ## Testing
 
-`python3 -m unittest discover -s tests` — 68 tests: unit (markdown parsing,
+`python3 -m unittest discover -s tests` — 91 tests: unit (markdown parsing,
 claim heuristics) and integration (real temp git repos exercising the full
 check/stamp/stale cycle through `cli.main`). No test doubles for git; the
 real binary runs against throwaway repos.

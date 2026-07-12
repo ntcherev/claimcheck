@@ -9,6 +9,7 @@ Claim types:
   ANCHOR    heading anchor in a relative link or same doc      [x](foo.md#setup)
   SYMBOL    inline code that looks like a code identifier      `Planner.run()`
   COMMIT    a git sha cited in prose or front matter           verified at commit ab12cd3
+  IMPORT    a memory-import token in an agent context file     @AGENTS.md
 """
 
 from __future__ import annotations
@@ -18,7 +19,7 @@ import re
 from dataclasses import dataclass, field
 from enum import Enum
 
-from .markdown import Document
+from .markdown import Document, mask_inline_code
 
 
 class ClaimType(Enum):
@@ -28,6 +29,7 @@ class ClaimType(Enum):
     ANCHOR = "anchor"
     SYMBOL = "symbol"
     COMMIT = "commit"
+    IMPORT = "import"
 
 
 @dataclass
@@ -68,6 +70,10 @@ _ALL_CAPS_SEG_RE = re.compile(r"^[A-Z][A-Z0-9_]*$")
 
 def looks_like_path(token: str) -> bool:
     if not token or _NON_CONCRETE_RE.search(token) or not _PATH_CHARS_RE.match(token):
+        return False
+    if token.startswith("-"):
+        # `spec.md` + `-implementation-contract.md`: a leading-hyphen token
+        # is "same prefix, this suffix" shorthand, not a real file (ADR-015).
         return False
     if _MIME_RE.match(token):
         return False
@@ -126,6 +132,38 @@ def _fence_path_claims(doc: Document):
                             fence.start_line + 1 + offset, extra={"fence": True})
 
 
+# Files whose prose is scanned for `@path` memory imports. CLAUDE.md and
+# CLAUDE.local.md evaluate imports natively; AGENTS.md is the dominant import
+# target and evaluates them when imported (ADR-013 — the true rule is
+# import-graph reachability; the basename gate is the precise-enough subset).
+AGENT_FILE_BASENAMES = {"CLAUDE.md", "CLAUDE.local.md", "AGENTS.md"}
+
+_IMPORT_EDGE_STRIP = "\"'.,;:!?()[]<>"
+
+
+def _import_claims(doc: Document):
+    """`@path` tokens in agent-file prose: `@AGENTS.md` in CLAUDE.md is a
+    claim that the imported file exists. Imports inside code spans and
+    fences are not evaluated by the runtime, so they are not claims."""
+    for lineno, line in doc.prose_lines:
+        if "@" not in line:
+            continue
+        for tok in mask_inline_code(line).split():
+            tok = tok.strip(_IMPORT_EDGE_STRIP)
+            if not tok.startswith("@"):
+                continue
+            value = tok[1:].removeprefix("./")
+            if not value or value.startswith("@") or _NON_CONCRETE_RE.search(value):
+                continue
+            if value.startswith(("~", "/")):
+                # Home-dir and absolute imports point outside the repo;
+                # real but unverifiable here — count, don't report.
+                yield Claim(ClaimType.IMPORT, value, doc.path, lineno,
+                            extra={"outside_repo": True})
+            elif looks_like_path(value):
+                yield Claim(ClaimType.IMPORT, value.rstrip("/"), doc.path, lineno)
+
+
 def extract(doc: Document, symbols_enabled: bool = True,
             fences_enabled: bool = True) -> list[Claim]:
     claims: list[Claim] = []
@@ -176,6 +214,9 @@ def extract(doc: Document, symbols_enabled: bool = True,
     if fences_enabled:
         claims.extend(_fence_path_claims(doc))
 
+    if posixpath.basename(doc.path) in AGENT_FILE_BASENAMES:
+        claims.extend(_import_claims(doc))
+
     for lineno, line in doc.prose_lines:
         for m in _COMMIT_RE.finditer(line):
             claims.append(Claim(ClaimType.COMMIT, m.group(1), doc.path, lineno))
@@ -194,11 +235,13 @@ def extract(doc: Document, symbols_enabled: bool = True,
 
 def resolve_candidates(claim_value: str, doc_path: str) -> list[str]:
     """Repo-relative candidate locations for a path-ish claim: as written
-    from the repo root, and relative to the doc's directory."""
+    from the repo root, and relative to the doc's directory. Empty when
+    every reading escapes the repo (`../sibling.md` in a root doc) — such
+    claims are unverifiable inside this checkout (ADR-016)."""
     root_rel = posixpath.normpath(claim_value)
     doc_dir = posixpath.dirname(doc_path)
     doc_rel = posixpath.normpath(posixpath.join(doc_dir, claim_value)) if doc_dir else root_rel
     out = [root_rel]
     if doc_rel != root_rel:
         out.append(doc_rel)
-    return [c for c in out if not c.startswith("..")] or [root_rel]
+    return [c for c in out if not c.startswith("..")]
